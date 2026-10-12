@@ -162,10 +162,25 @@ public struct MemoEntityStore {
         }
     }
 
-    public func search(_ text: String, limit: Int = 100) throws -> [MemoEntity] {
+    public func search(_ text: String, accountKey: String? = nil, limit: Int = 100) throws -> [MemoEntity] {
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return Array(try allEntities().filter {
-            query.isEmpty || $0.content.localizedStandardContains(query)
-        }.prefix(limit))
+        let names = try accountNames()
+        let descriptor = FetchDescriptor<StoredMemo>(
+            predicate: #Predicate { !$0.softDeleted },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        let memos = try context.fetch(descriptor)
+        precondition(limit >= 0)
+        guard limit > 0 else { return [] }
+        var entities: [MemoEntity] = []
+        for memo in memos {
+            guard let name = names[memo.accountKey], !memo.softDeleted, memo.rowStatus == .normal,
+                  accountKey == nil || memo.accountKey == accountKey,
+                  query.isEmpty || memo.content.localizedStandardContains(query),
+                  let entity = MemoEntity(memo: memo, accountName: name) else { continue }
+            entities.append(entity)
+            if entities.count == limit { break }
+        }
+        return entities
     }
 }

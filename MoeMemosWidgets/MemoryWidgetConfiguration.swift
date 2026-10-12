@@ -92,9 +92,9 @@ struct MemoryWidgetMemoEntityQuery: EntityQuery {
 @MainActor
 private func loadSuggestedEntitiesFromStore() async throws -> [MemoryWidgetMemoEntity] {
     let context = AppInfo().modelContext
-    let accountKey = AccountManager(modelContext: context).currentAccount?.key
-    return try MemoEntityStore(context: context).allEntities()
-        .filter { $0.accountKey == accountKey }.prefix(100).compactMap { entity in
+    guard let accountKey = AccountManager(modelContext: context).currentAccount?.key else { return [] }
+    return try MemoEntityStore(context: context).search("", accountKey: accountKey, limit: 100)
+        .compactMap { entity in
             guard let key = MemoEntityIdentifier(token: entity.id),
                   let token = PersistentIdentifierTokenCoder.encode(key.persistentID) else { return nil }
             return MemoryWidgetMemoEntity(id: token, content: entity.content, createdAt: entity.createdAt)

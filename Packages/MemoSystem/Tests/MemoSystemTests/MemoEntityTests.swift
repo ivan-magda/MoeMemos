@@ -94,6 +94,42 @@ final class MemoEntityTests: XCTestCase {
         XCTAssertEqual(try store.search("coffee").map(\.id), [try identifier(second)])
     }
 
+    func testSearchAppliesLimitAfterEligibilityAndTextMatching() throws {
+        let context = try makeContext()
+        let first = try insertMemo(in: context, content: "Coffee first")
+        let second = try insertMemo(in: context, content: "COFFEE second")
+        let nonmatching = try insertMemo(in: context, content: "Tea")
+        let archived = try insertMemo(in: context, content: "Coffee archived")
+        archived.rowStatus = .archived
+        let deleted = try insertMemo(in: context, content: "Coffee deleted")
+        deleted.softDeleted = true
+        let unavailable = try insertMemo(in: context, account: "unavailable", content: "Coffee unavailable")
+        for (index, memo) in [first, second, nonmatching, archived, deleted, unavailable].enumerated() {
+            memo.createdAt = Date(timeIntervalSince1970: TimeInterval(index))
+        }
+        try context.save()
+        let store = MemoEntityStore(context: context, accountAvailable: { $0 != "unavailable" })
+        XCTAssertEqual(try store.search(" \n cOfFeE \t", limit: 2).map(\.id),
+                       try [identifier(second), identifier(first)])
+        XCTAssertEqual(try store.search("coffee", limit: 1).map(\.id), [try identifier(second)])
+        XCTAssertTrue(try store.search("coffee", limit: 0).isEmpty)
+    }
+
+    func testAccountFilteredSearchAppliesLimitAfterAccountAndAvailability() throws {
+        let context = try makeContext()
+        let first = try insertMemo(in: context, account: "a", content: "First")
+        let second = try insertMemo(in: context, account: "b", content: "Second")
+        let unavailable = try insertMemo(in: context, account: "unavailable", content: "Unavailable")
+        for (index, memo) in [first, second, unavailable].enumerated() {
+            memo.createdAt = Date(timeIntervalSince1970: TimeInterval(index))
+        }
+        try context.save()
+        let store = MemoEntityStore(context: context, accountAvailable: { $0 != "unavailable" })
+        XCTAssertEqual(try store.search("", accountKey: "a", limit: 1).map(\.id), [try identifier(first)])
+        XCTAssertEqual(try store.search("", limit: 2).map(\.id), try [identifier(second), identifier(first)])
+        XCTAssertTrue(try store.search("", accountKey: "unavailable", limit: 1).isEmpty)
+    }
+
     func testAttachmentOnlyMemoHasNonemptyTitleAndAccountAwareURL() throws {
         let context = try makeContext()
         let memo = try insertMemo(in: context, content: "")
